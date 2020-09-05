@@ -91,13 +91,14 @@
 							<version>2.5.2</version>
 							<configuration>
 									<container>
-											<creationTime>USE_CURRENT_TIMESTAMP</creationTime>
+										<creationTime>USE_CURRENT_TIMESTAMP</creationTime>
 									</container>
 									<to>
-											<image>docker.io/djsoon/cn101-devops-app</image>
+										<image>docker.io/djsoon/cn101-devops-app</image>
 									</to>
 							</configuration>
 					</plugin>
 			</plugins>
 	</build>
+
 </project>

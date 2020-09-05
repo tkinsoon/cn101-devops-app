@@ -1,0 +1,104 @@
+variables:
+    USER: "tuckkin"
+    NAMESPACE: "user-tuckkin"
+    INGRESS_HOST: "user-tuckkin.tp.aws.bizilife.net"
+
+stages:
+    - build
+    - test
+    - publish
+    - staging
+    - production
+
+build-app:
+    stage: build
+    image: openjdk:13-alpine
+    script:
+        - ./mvnw install -DskipTests
+    artifacts:
+        paths:
+            - ./target/*.jar
+
+test-app:
+    stage: test
+    image: openjdk:13-alpine
+    before_script:
+        - apk --no-cache add curl
+        - apk --no-cache add jq
+    script:
+        #- java -jar ./target/app-0.0.1-SNAPSHOT.jar &
+        #- sleep 5
+        #- JSON=$(curl http://localhost:8080/rest/app/info)
+        #- echo $JSON
+        #- echo $JSON | jq .port
+        #- curl "http://localhost:8080/rest/app/info" | grep -q "port"
+        - exit 0
+
+push-image-to-staging-container-registry:
+    stage: publish
+    image:
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: [""]
+    script:
+        - echo "create container image and push the image to the staging container registry"
+        - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+        #- /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ./Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ./Dockerfile --destination $CI_REGISTRY_IMAGE:$USER
+    dependencies:
+        - build-app
+    only:
+        - master
+
+push-image-to-production-container-registry:
+    stage: publish
+    image:
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: [""]
+    script:
+        - echo "create container image and push the image to the production container registry"
+    dependencies:
+        - test-app
+    only:
+        - master
+
+deploy-to-dev-k8s-cluster:
+    stage: staging
+    image: dtzar/helm-kubectl
+    before_script:
+        - apk --no-cache add curl bash
+        - curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        - mv kustomize /usr/local/bin/
+    script:
+        - echo "deploy application to the staging cluster"
+        ## Configure kubeconfig
+        - mkdir -p ~/.kube/
+        - touch config
+        # ENCODE - echo $(cat $KUBECONF | base64) | tr -d " "
+        - echo $KUBECONF | base64 -d > ~/.kube/config
+        - kubectl config set-context --current --namespace=$NAMESPACE
+        - kubectl config view --minify | grep "namespace:"
+        ### Update YAML files for Ingress, Service, Deployment
+        #- echo $CI_REGISTRY_USER
+        #- echo $CI_REGISTRY_PASSWORD
+        #- echo $CI_REGISTRY
+        #- echo $CI_DEPLOY_USER
+        #- echo $CI_DEPLOY_PASSWORD
+        - cd deploy
+        - kustomize edit set image app-image=$CI_REGISTRY_IMAGE:$USER
+        - kustomize edit set namespace $NAMESPACE
+        - mkdir secrets
+        - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_DEPLOY_USER\",\"password\":\"$CI_DEPLOY_PASSWORD\"}}}" > secrets/.dockerconfigjson
+        #- kubectl create secret docker-registry regcred --docker-server=$CI_REGISTRY --docker-username='$CI_DEPLOY_USER' --docker-password='$CI_DEPLOY_PASSWORD' --docker-email=$GITLAB_USER_EMAIL --namespace=$NAMESPACE
+        - echo "[{\"op\":\"replace\",\"path\":\"/spec/rules/0/host\",\"value\":\"$INGRESS_HOST\"}]" > ingress_patch.json
+        #- cat ingress_patch.json
+        ### Finally, apply all the updated YAML files
+        #- kubectl apply -k .
+        - kustomize build > deploy.yaml
+        - kubectl apply -f deploy.yaml
+
+deploy-to-prod-k8s-cluster:
+    stage: production
+    image: dtzar/helm-kubectl
+    script:
+        - echo "deploy application to the production cluster"
+    when: manual
