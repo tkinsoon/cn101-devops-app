@@ -1,5 +1,5 @@
 variables:
-    USER: "tuckkin"
+    GITLAB_USER_PASSWORD: "No1knows!"
     DEV_NAMESPACE: "user-tuckkin"
     DEV_INGRESS_HOST: "user-tuckkin-dev.tp.aws.bizilife.net"
     PROD_NAMESPACE: "user-tuckkin-prod"
@@ -8,7 +8,6 @@ variables:
     HARBOR_REGISTRY_USER: "tuckkin"
     HARBOR_REGISTRY_PASSWORD: "fslsna17okfh5u6ds73nebbi55penzqr"
     HARBOR_IMAGE: "harbor.tp.aws.bizilife.net/cn101/cn101-devops-app"
-    PASSWORD: "No1knows!"
 
 stages:
     - build
@@ -50,7 +49,7 @@ push-image-to-staging-container-registry:
         - echo "create container image and push the image to the staging container registry"
         - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
         #- /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ./Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ./Dockerfile --destination $CI_REGISTRY_IMAGE:$USER
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ./Dockerfile --destination $CI_REGISTRY_IMAGE:$GITLAB_USER_LOGIN
     dependencies:
         - build-app
     only:
@@ -66,7 +65,7 @@ push-image-to-production-container-registry:
         - echo $CI_PROJECT_DIR
         - echo "create container image and push the image to the production container registry"
         - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_REGISTRY_USER\",\"password\":\"$HARBOR_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ./Dockerfile --destination $HARBOR_IMAGE:$USER
+        - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ./Dockerfile --destination $HARBOR_IMAGE:$GITLAB_USER_LOGIN
     dependencies:
         - build-app
     only:
@@ -95,7 +94,7 @@ deploy-to-dev-k8s-cluster:
         #- echo $CI_DEPLOY_USER
         #- echo $CI_DEPLOY_PASSWORD
         - cd deploy
-        - kustomize edit set image app-image=$CI_REGISTRY_IMAGE:$USER
+        - kustomize edit set image app-image=$CI_REGISTRY_IMAGE:$GITLAB_USER_LOGIN
         - kustomize edit set namespace $DEV_NAMESPACE
         - mkdir secrets
         - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_DEPLOY_USER\",\"password\":\"$CI_DEPLOY_PASSWORD\"}}}" > secrets/.dockerconfigjson
@@ -120,7 +119,7 @@ deploy-to-prod-k8s-cluster:
         #- echo $GITLAB_USER_EMAIL
         #- echo $GITLAB_USER_NAME
         #- git remote set-url origin https://$CI_DEPLOY_USER:$CI_DEPLOY_PASSWORD@$CI_SERVER_HOST/$GITLAB_USER_LOGIN/$CI_PROJECT_NAME.git
-        - git remote set-url origin https://$USER:$PASSWORD@$CI_SERVER_HOST/$GITLAB_USER_LOGIN/$CI_PROJECT_NAME.git
+        - git remote set-url origin https://$GITLAB_USER_LOGIN:$GITLAB_USER_PASSWORD@$CI_SERVER_HOST/$GITLAB_USER_LOGIN/$CI_PROJECT_NAME.git
         - git config --global user.email "$GITLAB_USER_EMAIL"
         - git config --global user.name "$GITLAB_USER_NAME"
     script:
@@ -131,7 +130,7 @@ deploy-to-prod-k8s-cluster:
         - git pull origin master
         - cd deploy
         - kustomize edit add annotation time:$TIMESTAMP -f
-        - kustomize edit set image app-image=$HARBOR_IMAGE:$USER
+        - kustomize edit set image app-image=$HARBOR_IMAGE:$GITLAB_USER_LOGIN
         - kustomize edit set namespace $PROD_NAMESPACE
         - mkdir secrets
         - echo "{\"auths\":{\"$HARBOR_REGISTRY\":{\"username\":\"$HARBOR_REGISTRY_USER\",\"password\":\"$HARBOR_REGISTRY_PASSWORD\"}}}" > secrets/.dockerconfigjson
